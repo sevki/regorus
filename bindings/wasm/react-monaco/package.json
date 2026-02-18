@@ -1,0 +1,14 @@
+{
+  "name": "regorus-react-monaco",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "test": "node --test languageServerAdapter.test.js"
+  },
+  "peerDependencies": {
+    "@monaco-editor/react": "^4.7.0",
+    "monaco-editor": "^0.52.0",
+    "react": "^19.0.0"
+  }
+}
