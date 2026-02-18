@@ -12,3 +12,14 @@ export default function App() {
 ```
 
 The example calls `validateWithCustomSchema(...)`, which sets `setInputSchemaJson(...)` and then runs `validateDocument(...)` so schema validation errors can be shown as Monaco markers.
+
+```jsx
+const server = useMemo(() => new regorus.RegoLanguageServer(), [regorus]);
+const markers = validateWithCustomSchema(
+  server,
+  "file:///policy.rego",
+  policy,
+  input,
+  schema
+);
+```

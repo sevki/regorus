@@ -11,7 +11,7 @@ export function diagnosticsToMonacoMarkers(diagnostics) {
   }));
 }
 
-export async function validateWithRegoLanguageServer(server, uri, rego, inputJson) {
+export function validateWithRegoLanguageServer(server, uri, rego, inputJson) {
   const resultJson = server.validateDocument(uri, rego, inputJson ?? null);
   const result = JSON.parse(resultJson);
   return diagnosticsToMonacoMarkers(result.diagnostics);
