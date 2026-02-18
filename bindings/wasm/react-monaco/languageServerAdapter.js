@@ -1,6 +1,8 @@
+const MONACO_SEVERITY_ERROR = 8;
+
 export function diagnosticsToMonacoMarkers(diagnostics) {
   return diagnostics.map((diagnostic) => ({
-    severity: 8,
+    severity: MONACO_SEVERITY_ERROR,
     message: diagnostic.message,
     startLineNumber: diagnostic.range.start.line + 1,
     startColumn: diagnostic.range.start.character + 1,
