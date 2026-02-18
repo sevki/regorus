@@ -17,7 +17,7 @@ export async function validateWithRegoLanguageServer(server, uri, rego, inputJso
   return diagnosticsToMonacoMarkers(result.diagnostics);
 }
 
-export async function validateWithCustomSchema(
+export function validateWithCustomSchema(
   server,
   uri,
   rego,
