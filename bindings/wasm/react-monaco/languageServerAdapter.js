@@ -16,3 +16,16 @@ export async function validateWithRegoLanguageServer(server, uri, rego, inputJso
   const result = JSON.parse(resultJson);
   return diagnosticsToMonacoMarkers(result.diagnostics);
 }
+
+export async function validateWithCustomSchema(
+  server,
+  uri,
+  rego,
+  inputJson,
+  schemaJson
+) {
+  if (schemaJson) {
+    server.setInputSchemaJson(schemaJson);
+  }
+  return validateWithRegoLanguageServer(server, uri, rego, inputJson);
+}

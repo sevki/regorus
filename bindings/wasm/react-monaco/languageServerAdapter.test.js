@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   diagnosticsToMonacoMarkers,
+  validateWithCustomSchema,
   validateWithRegoLanguageServer
 } from "./languageServerAdapter.js";
 
@@ -47,4 +48,28 @@ test("uses wasm language server output", async () => {
   );
   assert.equal(markers.length, 1);
   assert.equal(markers[0].startLineNumber, 2);
+});
+
+test("sets custom input schema before validation", async () => {
+  const calls = [];
+  const fakeServer = {
+    setInputSchemaJson(schemaJson) {
+      calls.push(["setInputSchemaJson", schemaJson]);
+    },
+    validateDocument(uri, rego, input) {
+      calls.push(["validateDocument", uri, rego, input]);
+      return JSON.stringify({ diagnostics: [] });
+    }
+  };
+
+  await validateWithCustomSchema(
+    fakeServer,
+    "file:///policy.rego",
+    "package demo",
+    "{\"name\":1}",
+    "{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\"}},\"required\":[\"name\"]}"
+  );
+
+  assert.equal(calls[0][0], "setInputSchemaJson");
+  assert.equal(calls[1][0], "validateDocument");
 });
