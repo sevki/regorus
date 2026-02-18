@@ -48,7 +48,8 @@ impl RegoLanguageServer {
     }
 
     /// Set a custom JSON schema used to validate input documents.
-    pub fn setInputSchemaJson(&mut self, schema_json: String) -> Result<(), JsValue> {
+    #[wasm_bindgen(js_name = "setInputSchemaJson")]
+    pub fn set_input_schema_json(&mut self, schema_json: String) -> Result<(), JsValue> {
         let schema = serde_json::from_str(&schema_json).map_err(error_to_jsvalue)?;
         jsonschema::validator_for(&schema).map_err(error_to_jsvalue)?;
         self.input_schema = Some(schema);
