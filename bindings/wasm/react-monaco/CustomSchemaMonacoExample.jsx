@@ -39,12 +39,6 @@ export default function CustomSchemaMonacoExample({ regorus }) {
   const [diagnostics, setDiagnostics] = useState([]);
   const [error, setError] = useState("");
 
-  useEffect(() => () => {
-    if (typeof server.dispose === "function") {
-      server.dispose();
-    }
-  }, [server]);
-
   async function runValidation() {
     try {
       const markers = await validateWithCustomSchema(
