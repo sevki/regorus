@@ -84,7 +84,17 @@ impl TestWasmCommand {
         node.current_dir(&wasm_dir);
         node.arg("test.js");
         let label = format!("{} test.js (bindings/wasm)", self.node);
-        run_command(node, &label)
+        run_command(node, &label)?;
+
+        let mut monaco = Command::new(&self.node);
+        monaco.current_dir(wasm_dir.join("react-monaco"));
+        monaco.arg("--test");
+        monaco.arg("languageServerAdapter.test.js");
+        let monaco_label = format!(
+            "{} --test languageServerAdapter.test.js (bindings/wasm/react-monaco)",
+            self.node
+        );
+        run_command(monaco, &monaco_label)
     }
 }
 

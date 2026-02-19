@@ -14,6 +14,9 @@ use serde::Deserialize;
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 
+mod lsp;
+pub use lsp::RegoLanguageServer;
+
 #[wasm_bindgen]
 /// WASM wrapper for [`regorus::Engine`]
 pub struct Engine {
