@@ -180,7 +180,7 @@ fn extract_json_pointer(message: &str) -> Option<String> {
 }
 
 fn find_json_pointer_range(input_json: &str, pointer: &str) -> Option<Range> {
-    let mut token = pointer
+    let token = pointer
         .split('/')
         .next_back()?
         .replace("~1", "/")
@@ -188,23 +188,20 @@ fn find_json_pointer_range(input_json: &str, pointer: &str) -> Option<Range> {
     if token.is_empty() {
         return Some(default_range());
     }
-    if token.chars().all(|c| c.is_ascii_digit()) {
-        token = format!("[{token}]");
-    }
     let key = format!("\"{token}\"");
     let start = input_json.find(&key)?;
-    let end = start.saturating_add(key.chars().count());
+    let end = start.saturating_add(key.len());
     Some(Range {
         start: offset_to_position(input_json, start),
         end: offset_to_position(input_json, end),
     })
 }
 
-fn offset_to_position(text: &str, offset_chars: usize) -> Position {
+fn offset_to_position(text: &str, offset_bytes: usize) -> Position {
     let mut line = 0_u32;
     let mut character = 0_u32;
-    for (idx, ch) in text.chars().enumerate() {
-        if idx >= offset_chars {
+    for (idx, ch) in text.char_indices() {
+        if idx >= offset_bytes {
             break;
         }
         if ch == '\n' {
@@ -258,13 +255,24 @@ mod tests {
     }
 
     #[test]
+    fn computes_range_with_utf8_prefix() {
+        let input = "{\"π\":1,\"user\":2}";
+        let range = find_json_pointer_range(input, "/user");
+        assert!(range.is_some());
+        if let Some(range) = range {
+            assert_eq!(range.start.character, 7);
+        }
+    }
+
+    #[test]
     fn validates_rego_and_input_schema() {
         let mut server = crate::lsp::RegoLanguageServer::new();
-        let schema_result = server.set_input_schema_json(
-            r#"{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}"#
-                .to_string(),
-        );
-        assert!(schema_result.is_ok());
+        assert!(server
+            .set_input_schema_json(
+                r#"{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}"#
+                    .to_string(),
+            )
+            .is_ok());
         let result = server.validateDocument(
             "file:///policy.rego".to_string(),
             "package demo\nimport rego.v1\ndefault allow := true".to_string(),
