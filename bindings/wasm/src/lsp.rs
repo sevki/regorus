@@ -74,22 +74,10 @@ impl RegoLanguageServer {
             let input: JsonValue = serde_json::from_str(&input_json).map_err(error_to_jsvalue)?;
             let validator = jsonschema::validator_for(schema).map_err(error_to_jsvalue)?;
             for error in validator.iter_errors(&input) {
-                diagnostics.push(Diagnostic {
-                    range: Range {
-                        start: Position {
-                            line: 0,
-                            character: 0,
-                        },
-                        end: Position {
-                            line: 0,
-                            character: 1,
-                        },
-                    },
-                    severity: Some(DiagnosticSeverity::ERROR),
-                    source: Some("regorus-jsonschema".to_string()),
-                    message: error.to_string(),
-                    ..Default::default()
-                });
+                diagnostics.push(jsonschema_error_to_diagnostic(
+                    &input_json,
+                    error.to_string(),
+                ));
             }
         }
 
@@ -98,14 +86,25 @@ impl RegoLanguageServer {
 
     /// Return static Rego completions as LSP completion response JSON.
     pub fn completions(&self) -> Result<String, JsValue> {
-        let items = ["package", "import", "default", "if", "data", "input"]
-            .iter()
+        let mut items: Vec<CompletionItem> = rego_keyword_completions()
+            .into_iter()
             .map(|label| CompletionItem {
-                label: (*label).to_string(),
+                label,
                 kind: Some(CompletionItemKind::KEYWORD),
                 ..Default::default()
             })
             .collect();
+        if let Some(schema) = &self.input_schema {
+            items.extend(
+                schema_property_completions(schema)
+                    .into_iter()
+                    .map(|label| CompletionItem {
+                        label,
+                        kind: Some(CompletionItemKind::FIELD),
+                        ..Default::default()
+                    }),
+            );
+        }
         serde_json::to_string(&CompletionResponse::Array(items)).map_err(error_to_jsvalue)
     }
 }
@@ -133,6 +132,24 @@ fn policy_error_to_diagnostic(uri: &str, message: &str) -> Diagnostic {
     }
 }
 
+fn rego_keyword_completions() -> Vec<String> {
+    [
+        "package", "import", "default", "if", "contains", "some", "not", "in", "with", "data",
+        "input",
+    ]
+    .iter()
+    .map(|label| (*label).to_string())
+    .collect()
+}
+
+fn schema_property_completions(schema: &JsonValue) -> Vec<String> {
+    schema
+        .get("properties")
+        .and_then(serde_json::Value::as_object)
+        .map(|properties| properties.keys().cloned().collect())
+        .unwrap_or_default()
+}
+
 fn extract_line_col(message: &str) -> Option<(u32, u32)> {
     let mut numbers = message
         .split(':')
@@ -142,9 +159,80 @@ fn extract_line_col(message: &str) -> Option<(u32, u32)> {
     Some((line, col))
 }
 
+fn jsonschema_error_to_diagnostic(input_json: &str, message: String) -> Diagnostic {
+    let range = extract_json_pointer(&message)
+        .and_then(|pointer| find_json_pointer_range(input_json, &pointer))
+        .unwrap_or_else(default_range);
+    Diagnostic {
+        range,
+        severity: Some(DiagnosticSeverity::ERROR),
+        source: Some("regorus-jsonschema".to_string()),
+        message,
+        ..Default::default()
+    }
+}
+
+fn extract_json_pointer(message: &str) -> Option<String> {
+    let start = message.find("\"/")?;
+    let rest = &message[start + 1..];
+    let end = rest.find('"')?;
+    Some(rest[..end].to_string())
+}
+
+fn find_json_pointer_range(input_json: &str, pointer: &str) -> Option<Range> {
+    let mut token = pointer
+        .split('/')
+        .next_back()?
+        .replace("~1", "/")
+        .replace("~0", "~");
+    if token.is_empty() {
+        return Some(default_range());
+    }
+    if token.chars().all(|c| c.is_ascii_digit()) {
+        token = format!("[{token}]");
+    }
+    let key = format!("\"{token}\"");
+    let start = input_json.find(&key)?;
+    let end = start.saturating_add(key.chars().count());
+    Some(Range {
+        start: offset_to_position(input_json, start),
+        end: offset_to_position(input_json, end),
+    })
+}
+
+fn offset_to_position(text: &str, offset_chars: usize) -> Position {
+    let mut line = 0_u32;
+    let mut character = 0_u32;
+    for (idx, ch) in text.chars().enumerate() {
+        if idx >= offset_chars {
+            break;
+        }
+        if ch == '\n' {
+            line = line.saturating_add(1);
+            character = 0;
+        } else {
+            character = character.saturating_add(1);
+        }
+    }
+    Position { line, character }
+}
+
+fn default_range() -> Range {
+    Range {
+        start: Position {
+            line: 0,
+            character: 0,
+        },
+        end: Position {
+            line: 0,
+            character: 1,
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::extract_line_col;
+    use super::{extract_json_pointer, extract_line_col, find_json_pointer_range};
     use wasm_bindgen::prelude::*;
     use wasm_bindgen_test::wasm_bindgen_test;
 
@@ -154,9 +242,25 @@ mod tests {
     }
 
     #[test]
+    fn extracts_json_pointer_from_message() {
+        let message = "\"/user\": 12 is not of type \"string\"";
+        assert_eq!(extract_json_pointer(message).as_deref(), Some("/user"));
+    }
+
+    #[test]
+    fn computes_range_from_json_pointer() {
+        let input = "{\n  \"user\": 12,\n  \"active\": true\n}";
+        let range = find_json_pointer_range(input, "/user");
+        assert!(range.is_some());
+        if let Some(range) = range {
+            assert_eq!(range.start.line, 1);
+        }
+    }
+
+    #[test]
     fn validates_rego_and_input_schema() {
         let mut server = crate::lsp::RegoLanguageServer::new();
-        let schema_result = server.setInputSchemaJson(
+        let schema_result = server.set_input_schema_json(
             r#"{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}"#
                 .to_string(),
         );
@@ -171,10 +275,24 @@ mod tests {
         assert!(result.contains("regorus-jsonschema"));
     }
 
+    #[test]
+    fn completions_include_schema_properties() {
+        let mut server = crate::lsp::RegoLanguageServer::new();
+        assert!(server
+            .set_input_schema_json(
+                r#"{"type":"object","properties":{"team":{"type":"string"}}}"#.to_string()
+            )
+            .is_ok());
+        let completions = server.completions();
+        assert!(completions.is_ok());
+        let completions = completions.unwrap_or_else(|_| String::new());
+        assert!(completions.contains("\"team\""));
+    }
+
     #[wasm_bindgen_test]
     fn validates_rego_and_input_schema_wasm() -> Result<(), JsValue> {
         let mut server = crate::lsp::RegoLanguageServer::new();
-        server.setInputSchemaJson(
+        server.set_input_schema_json(
             r#"{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}"#
                 .to_string(),
         )?;
